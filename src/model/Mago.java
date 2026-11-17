@@ -52,4 +52,12 @@ public class Mago extends Personagem{
     public int getManaTotal(){
         return this.manaTotal;
     }
+
+    public void restaurarMana(int valor) {
+        if (valor < 0 || valor > manaTotal) {
+            throw new IllegalArgumentException("Mana salva inválida.");
+        }
+        mana = valor;
+    }
 }
+

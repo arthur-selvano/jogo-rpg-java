@@ -10,3 +10,7 @@ build/
 
 out/
 **/out/
+
+.env
+target/
+

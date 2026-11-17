@@ -51,4 +51,12 @@ public class Guerreiro extends Personagem {
     public int getFuria(){
         return this.furia;
     }
+
+    public void restaurarFuria(int valor) {
+        if (valor < 0 || valor > 100) {
+            throw new IllegalArgumentException("Fúria salva inválida.");
+        }
+        furia = valor;
+    }
 }
+
