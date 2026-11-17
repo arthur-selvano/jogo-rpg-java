@@ -57,4 +57,12 @@ public abstract class Personagem {
     public int getAtaque(){
         return this.ataque;
     }
+
+    public void restaurarVida(int valor) {
+        if (valor < 0 || valor > vidaTotal) {
+            throw new IllegalArgumentException("Vida salva inválida.");
+        }
+        vida = valor;
+    }
 }
+

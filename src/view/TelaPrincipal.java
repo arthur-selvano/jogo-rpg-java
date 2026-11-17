@@ -70,6 +70,7 @@ public class TelaPrincipal extends JFrame {
         raiz.add(status, CARD_STATUS);
         raiz.add(gameOver, CARD_FIM);
 
+        instalarMenuPersistencia();
         setContentPane(raiz);
         pack();
         setLocationRelativeTo(null);
@@ -135,4 +136,103 @@ public class TelaPrincipal extends JFrame {
     public GerenciadorJogo getJogo() {
         return jogo;
     }
+
+    private boolean persistenciaOcupada;
+
+    private void instalarMenuPersistencia() {
+        javax.swing.JMenuBar barra = new javax.swing.JMenuBar();
+        javax.swing.JMenu partida = new javax.swing.JMenu("Partida");
+        javax.swing.JMenuItem salvar = new javax.swing.JMenuItem("Salvar progresso (F5)");
+        javax.swing.JMenuItem carregar = new javax.swing.JMenuItem("Carregar progresso (F9)");
+
+        salvar.setAccelerator(javax.swing.KeyStroke.getKeyStroke("F5"));
+        carregar.setAccelerator(javax.swing.KeyStroke.getKeyStroke("F9"));
+        salvar.addActionListener(e -> executarPersistencia(false));
+        carregar.addActionListener(e -> executarPersistencia(true));
+
+        partida.add(salvar);
+        partida.add(carregar);
+        barra.add(partida);
+        setJMenuBar(barra);
+    }
+
+    private void executarPersistencia(boolean carregar) {
+        if (persistenciaOcupada) return;
+
+        if (carregar && jogo.getEstado() != GerenciadorJogo.Estado.MENU
+                && !DialogoPixel.confirmar(this, "CARREGAR",
+                    "Substituir a partida atual pelo último progresso salvo?")) {
+            return;
+        }
+
+        final persistence.ProgressoJogo fotografia;
+        try {
+            fotografia = carregar ? null : jogo.exportarProgresso();
+        } catch (RuntimeException e) {
+            mostrarAviso("SALVAR", e.getMessage());
+            return;
+        }
+
+        persistenciaOcupada = true;
+        java.awt.Component focoAnterior =
+                java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .getFocusOwner();
+        java.awt.Component vidro = getGlassPane();
+        vidro.setFocusable(true);
+        vidro.addMouseListener(new java.awt.event.MouseAdapter() {});
+        vidro.setVisible(true);
+        vidro.requestFocusInWindow();
+
+        // O JDBC roda fora da thread gráfica.
+        new javax.swing.SwingWorker<
+                java.util.Optional<persistence.ProgressoJogo>, Void>() {
+            @Override
+            protected java.util.Optional<persistence.ProgressoJogo> doInBackground()
+                    throws Exception {
+                persistence.GerenciadorSave saves = new persistence.GerenciadorSave();
+                if (carregar) return saves.carregar();
+                saves.salvar(fotografia);
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            protected void done() {
+                vidro.setVisible(false);
+                persistenciaOcupada = false;
+                try {
+                    java.util.Optional<persistence.ProgressoJogo> resultado = get();
+                    if (!carregar) {
+                        mostrarAviso("SALVAR", "Progresso salvo com sucesso.");
+                    } else if (resultado.isEmpty()) {
+                        mostrarAviso("CARREGAR", "Nenhuma partida salva foi encontrada.");
+                    } else {
+                        jogo.restaurarProgresso(resultado.get());
+                        switch (jogo.getEstado()) {
+                            case BATALHA:
+                                mostrarBatalha(java.util.List.of("Batalha recuperada."));
+                                break;
+                            case DERROTA:
+                                mostrarGameOver(false);
+                                break;
+                            case FIM_DA_JORNADA:
+                                mostrarGameOver(true);
+                                break;
+                            default:
+                                mostrarMapa();
+                        }
+                    }
+                } catch (Exception e) {
+                    Throwable causa = e.getCause() == null ? e : e.getCause();
+                    mostrarAviso(carregar ? "CARREGAR" : "SALVAR",
+                            "Não foi possível concluir a operação. "
+                            + "Confira o banco e as variáveis de ambiente.\n"
+                            + causa.getMessage());
+                }
+                if (focoAnterior != null && focoAnterior.isShowing()) {
+                    focoAnterior.requestFocusInWindow();
+                }
+            }
+        }.execute();
+    }
 }
+

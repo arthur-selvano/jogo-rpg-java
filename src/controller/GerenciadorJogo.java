@@ -666,4 +666,165 @@ public class GerenciadorJogo {
             this.vida = this.vidaTotal;
         }
     }
+
+    /** Exporta o estado utilizado de fato pela interface gráfica. */
+    public persistence.ProgressoJogo exportarProgresso() {
+        if (jogador == null || estado == Estado.MENU) {
+            throw new IllegalStateException("Inicie uma jornada antes de salvar.");
+        }
+
+        java.util.Properties p = new java.util.Properties();
+        p.setProperty("formato", "1");
+        p.setProperty("nome", getNomeJogador());
+        p.setProperty("classe", classeJogador.name());
+        p.setProperty("estado", estado.name());
+        p.setProperty("vida", String.valueOf(getVida()));
+        p.setProperty("vidaTotal", String.valueOf(getVidaTotal()));
+        p.setProperty("ataque", String.valueOf(getAtaque()));
+        p.setProperty("defesa", String.valueOf(getDefesa()));
+        p.setProperty("mana", String.valueOf(getMana()));
+        p.setProperty("manaTotal", String.valueOf(getManaTotal()));
+        p.setProperty("furia", String.valueOf(getFuria()));
+        p.setProperty("sala", String.valueOf(salaAtual));
+        p.setProperty("xp", String.valueOf(xp));
+        p.setProperty("nivel", String.valueOf(nivel));
+        p.setProperty("derrotados", String.valueOf(inimigosDerrotados));
+        p.setProperty("turnos", String.valueOf(turnosInimigo));
+
+        for (int i = 0; i < salas.size(); i++) {
+            p.setProperty("visitada." + i, String.valueOf(salas.get(i).visitada));
+        }
+
+        if (inimigo != null) {
+            p.setProperty("inimigo.tipo", tipoInimigo.name());
+            p.setProperty("inimigo.nome", inimigo.getNome());
+            p.setProperty("inimigo.vida", String.valueOf(inimigo.getVida()));
+            if (inimigo instanceof Dragao) {
+                p.setProperty("inimigo.fogo",
+                        String.valueOf(((Dragao) inimigo).getCargaFogo()));
+            }
+        }
+
+        return new persistence.ProgressoJogo(p, inventario);
+    }
+
+    /** Valida separadamente para preservar a partida se o save for inválido. */
+    public void restaurarProgresso(persistence.ProgressoJogo progresso) {
+        GerenciadorJogo novo = new GerenciadorJogo();
+        novo.lerProgresso(progresso);
+
+        jogador = novo.jogador;
+        classeJogador = novo.classeJogador;
+        inimigo = novo.inimigo;
+        tipoInimigo = novo.tipoInimigo;
+        estado = novo.estado;
+        salaAtual = novo.salaAtual;
+        xp = novo.xp;
+        nivel = novo.nivel;
+        inimigosDerrotados = novo.inimigosDerrotados;
+        turnosInimigo = novo.turnosInimigo;
+        salas = novo.salas;
+        inventario.clear();
+        inventario.addAll(novo.inventario);
+    }
+
+    private void lerProgresso(persistence.ProgressoJogo progresso) {
+        java.util.Properties p = progresso.getDados();
+        if (!"1".equals(p.getProperty("formato"))) {
+            throw new IllegalArgumentException("Formato de save incompatível.");
+        }
+        String nome = p.getProperty("nome");
+        if (nome == null || nome.isBlank()) {
+            throw new IllegalArgumentException("Nome salvo inválido.");
+        }
+
+        classeJogador = Classe.valueOf(p.getProperty("classe", ""));
+        estado = Estado.valueOf(p.getProperty("estado", ""));
+        if (estado == Estado.MENU) {
+            throw new IllegalArgumentException("Save sem jornada.");
+        }
+
+        int total = inteiroSalvo(p, "vidaTotal", 1, Integer.MAX_VALUE);
+        int ataque = inteiroSalvo(p, "ataque", 0, Integer.MAX_VALUE);
+        int defesa = inteiroSalvo(p, "defesa", 0, Integer.MAX_VALUE);
+
+        jogador = classeJogador == Classe.MAGO
+                ? new MagoJogavel(nome, total, defesa, ataque,
+                    inteiroSalvo(p, "manaTotal", 0, Integer.MAX_VALUE))
+                : new GuerreiroJogavel(nome, total, defesa, ataque);
+
+        jogador.restaurarVida(inteiroSalvo(p, "vida", 0, total));
+        if (jogador instanceof Mago) {
+            ((Mago) jogador).restaurarMana(
+                    inteiroSalvo(p, "mana", 0, getManaTotal()));
+        } else {
+            ((Guerreiro) jogador).restaurarFuria(
+                    inteiroSalvo(p, "furia", 0, 100));
+        }
+
+        salaAtual = inteiroSalvo(p, "sala", 0, salas.size() - 1);
+        xp = inteiroSalvo(p, "xp", 0, Integer.MAX_VALUE);
+        nivel = inteiroSalvo(p, "nivel", 1, LIMIARES_XP.length + 1);
+        inimigosDerrotados = inteiroSalvo(p, "derrotados", 0, salas.size());
+        turnosInimigo = inteiroSalvo(p, "turnos", 0, Integer.MAX_VALUE);
+
+        for (int i = 0; i < salas.size(); i++) {
+            String visitada = p.getProperty("visitada." + i);
+            if (!"true".equals(visitada) && !"false".equals(visitada)) {
+                throw new IllegalArgumentException("Mapa salvo inválido.");
+            }
+            salas.get(i).visitada = Boolean.parseBoolean(visitada);
+        }
+        if (!salas.get(salaAtual).visitada) {
+            throw new IllegalArgumentException("Sala atual não visitada.");
+        }
+
+        inventario.clear();
+        for (String item : progresso.getItens()) {
+            if (!ITEM_POCAO.equals(item) && !ITEM_MANA.equals(item)) {
+                throw new IllegalArgumentException("Item salvo desconhecido.");
+            }
+            inventario.add(item);
+        }
+
+        if (p.containsKey("inimigo.tipo")) {
+            tipoInimigo = TipoInimigo.valueOf(p.getProperty("inimigo.tipo"));
+            if (tipoInimigo != salas.get(salaAtual).inimigo) {
+                throw new IllegalArgumentException("Inimigo incompatível com a sala.");
+            }
+            String nomeInimigo = p.getProperty("inimigo.nome");
+            if (nomeInimigo == null || nomeInimigo.isBlank()) {
+                throw new IllegalArgumentException("Inimigo sem nome.");
+            }
+            inimigo = criarInimigo(tipoInimigo, nomeInimigo);
+            inimigo.restaurarVida(
+                    inteiroSalvo(p, "inimigo.vida", 0, inimigo.getVidaTotal()));
+            if (inimigo instanceof Dragao) {
+                ((Dragao) inimigo).restaurarCargaFogo(
+                        inteiroSalvo(p, "inimigo.fogo", 0, 3));
+            }
+        }
+
+        if (estado == Estado.BATALHA
+                && (inimigo == null || !inimigo.personagemVivo())) {
+            throw new IllegalArgumentException("Batalha sem inimigo vivo.");
+        }
+        if ((estado == Estado.DERROTA) != (getVida() == 0)) {
+            throw new IllegalArgumentException("Vida incompatível com o estado.");
+        }
+    }
+
+    private static int inteiroSalvo(java.util.Properties p,
+                                   String chave, int minimo, int maximo) {
+        try {
+            int valor = Integer.parseInt(p.getProperty(chave, ""));
+            if (valor >= minimo && valor <= maximo) {
+                return valor;
+            }
+        } catch (NumberFormatException ignorado) {
+            // O campo inválido será identificado abaixo.
+        }
+        throw new IllegalArgumentException("Campo salvo inválido: " + chave);
+    }
 }
+

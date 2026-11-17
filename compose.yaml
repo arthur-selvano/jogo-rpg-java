@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${RPG_DB_NAME:-rpg}
+      POSTGRES_USER: ${RPG_DB_USER:-rpg}
+      POSTGRES_PASSWORD: ${RPG_DB_PASSWORD:?Defina RPG_DB_PASSWORD no arquivo .env}
+    ports:
+      - "127.0.0.1:${RPG_DB_PORT:-5432}:5432"
+    volumes:
+      - rpg_dados:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  rpg_dados:

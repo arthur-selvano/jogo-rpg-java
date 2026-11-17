@@ -34,4 +34,12 @@ public class Dragao extends Monstro {
     public int getCargaFogo() {
         return this.cargaFogo;
     }
+
+    public void restaurarCargaFogo(int valor) {
+        if (valor < 0 || valor > 3) {
+            throw new IllegalArgumentException("Carga de fogo salva inválida.");
+        }
+        cargaFogo = valor;
+    }
 }
+
