@@ -1,23 +1,25 @@
-import model.Guerreiro;
-import model.Personagem;
-import model.Esqueleto;
-import model.Dragao;
+import view.TelaPrincipal;
+import view.component.DialogoPixel;
 
+import javax.swing.SwingUtilities;
 
+/**
+ * Ponto de entrada do jogo. Toda a interface Swing é criada na
+ * Event Dispatch Thread.
+ */
 public class Main {
+
     public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            Thread.setDefaultUncaughtExceptionHandler((thread, erro) ->
+                    SwingUtilities.invokeLater(() ->
+                            new DialogoPixel(null, "ERRO INESPERADO",
+                                    erro.getMessage() == null
+                                            ? "O jogo encontrou um problema inesperado."
+                                            : erro.getMessage()).setVisible(true)));
 
-
-        Personagem heroi = new Guerreiro("Josias", 100, 100, 15, 10);
-        Personagem inimigo_Guerreiro = new Guerreiro("Roberto", 70, 100, 10, 8);
-        Personagem inimigo_Esqueleto_1 = new Esqueleto("Ossada");
-
-        heroi.atacar(inimigo_Guerreiro);
-        inimigo_Esqueleto_1.atacar(heroi);
-
-        Personagem inimigo_Dragao_1 = new Dragao("Ignis");
-        inimigo_Dragao_1.atacar(heroi);
+            TelaPrincipal tela = new TelaPrincipal();
+            tela.setVisible(true);
+        });
     }
 }
-
-// classe main ainda apenas para demonstração

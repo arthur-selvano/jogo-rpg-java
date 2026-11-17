@@ -6,4 +6,7 @@ build/
 .vscode/
 .settings/
 .classpath
-.project
+.projectout/
+
+out/
+**/out/
