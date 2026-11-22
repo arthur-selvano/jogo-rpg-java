@@ -20,6 +20,12 @@ import java.util.List;
  * (menu, criação, mapa, batalha, status e fim de jogo).
  */
 public class TelaPrincipal extends JFrame {
+    static {
+        javax.swing.UIManager.put(
+                "AuditoryCues.playList",
+                javax.swing.UIManager.get("AuditoryCues.noAuditoryCues")
+        );
+    }
 
     public static final int LARGURA = 960;
     public static final int ALTURA = 600;
@@ -55,6 +61,13 @@ public class TelaPrincipal extends JFrame {
 
         raiz.setPreferredSize(new Dimension(LARGURA, ALTURA));
         raiz.setBackground(Color.BLACK);
+
+        raiz.getActionMap().put("beep", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                // Silencia o bipe padrão do Swing
+            }
+        });
 
         menu = new PainelMenu(this, jogo);
         criacao = new PainelCriacao(this, jogo);

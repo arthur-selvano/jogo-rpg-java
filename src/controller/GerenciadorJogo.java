@@ -2,18 +2,21 @@ package controller;
 
 import exception.ItemNaoEncontradoException;
 import exception.VidaInsuficienteException;
+import model.Arma;
 import model.Demonio;
 import model.Dragao;
 import model.Esqueleto;
 import model.Guerreiro;
+import model.Inventario;
+import model.Item;
 import model.Mago;
 import model.Monstro;
 import model.Necromante;
 import model.Personagem;
+import model.Pocao;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,9 +26,6 @@ import java.util.Random;
 /**
  * Controla o fluxo do jogo e é a única ponte entre a camada visual (Swing)
  * e as regras de negócio do pacote {@code model}.
- *
- * <p>A interface nunca lê/escreve no model diretamente: ela pede ações a esta
- * classe e consulta os getters de estado expostos aqui.</p>
  */
 public class GerenciadorJogo {
 
@@ -111,7 +111,7 @@ public class GerenciadorJogo {
     }
 
     private final Random sorteio = new Random();
-    private final List<String> inventario = new ArrayList<>();
+    private Inventario inventarioModel;
     private List<Sala> salas = criarMapa();
 
     private Personagem jogador;
@@ -129,12 +129,6 @@ public class GerenciadorJogo {
     // Criação de personagem / jornada
     // ------------------------------------------------------------------
 
-    /**
-     * Cria o herói e inicia uma nova jornada.
-     *
-     * @param classe classe escolhida
-     * @param nome   nome do herói (vazio vira "Herói")
-     */
     public void iniciarJornada(Classe classe, String nome) {
         String nomeFinal = (nome == null || nome.trim().isEmpty()) ? "Herói" : nome.trim();
         this.classeJogador = classe == null ? Classe.GUERREIRO : classe;
@@ -147,9 +141,22 @@ public class GerenciadorJogo {
                     this.classeJogador.getDefesaBase(), this.classeJogador.getAtaqueBase());
         }
 
-        inventario.clear();
-        inventario.add(ITEM_POCAO);
-        inventario.add(ITEM_POCAO);
+        inventarioModel = new Inventario(jogador);
+        inventarioModel.adicionarItem(criarPocaoVida());
+        inventarioModel.adicionarItem(criarPocaoVida());
+
+        if (this.classeJogador == Classe.MAGO) {
+            inventarioModel.adicionarItem(criarPocaoMana());
+            inventarioModel.adicionarItem(new Arma(
+                    "Cajado de Aprendiz",
+                    "Canaliza energia arcana para ampliar golpes e feitiços.",
+                    5));
+        } else {
+            inventarioModel.adicionarItem(new Arma(
+                    "Espada de Ferro",
+                    "Lâmina equilibrada forjada pelos ferreiros do reino.",
+                    5));
+        }
 
         salas = criarMapa();
         salas.get(0).visitada = true;
@@ -163,13 +170,12 @@ public class GerenciadorJogo {
         estado = Estado.EXPLORACAO;
     }
 
-    /** Volta ao estado inicial (usado ao retornar ao menu principal). */
     public void reiniciar() {
         jogador = null;
         classeJogador = null;
         inimigo = null;
         tipoInimigo = null;
-        inventario.clear();
+        inventarioModel = null;
         salas = criarMapa();
         salaAtual = 0;
         xp = 0;
@@ -195,7 +201,6 @@ public class GerenciadorJogo {
     // Exploração / mapa
     // ------------------------------------------------------------------
 
-    /** Avança para a próxima sala e dispara o evento dela. */
     public Resultado avancar() {
         List<String> msgs = new ArrayList<>();
         if (estado != Estado.EXPLORACAO) {
@@ -221,9 +226,9 @@ public class GerenciadorJogo {
                 msgs.add(sala.nome + ": " + sala.nomeInimigo + " bloqueia o caminho!");
                 break;
             case TESOURO:
-                String item = sortearItem();
-                inventario.add(item);
-                msgs.add("Você encontrou um baú antigo com: " + item + "!");
+                Item item = sortearItem();
+                inventarioModel.adicionarItem(item);
+                msgs.add("Você encontrou um baú antigo com: " + item.getNome() + "!");
                 break;
             default:
                 msgs.add("O caminho está tranquilo por aqui.");
@@ -231,28 +236,43 @@ public class GerenciadorJogo {
         return new Resultado(msgs, false, estado);
     }
 
-    private String sortearItem() {
-        return sorteio.nextDouble() < 0.7 ? ITEM_POCAO : ITEM_MANA;
+    private Item sortearItem() {
+        double r = sorteio.nextDouble();
+        if (r < 0.45) {
+            return criarPocaoVida();
+        } else if (r < 0.70) {
+            return criarPocaoMana();
+        } else if (classeJogador == Classe.MAGO) {
+            return new Arma("Cajado Rúnico", "Relíquia gravada com runas antigas de poder.", 10);
+        } else {
+            return new Arma("Lâmina de Aço", "Espada temperada capaz de atravessar armaduras.", 10);
+        }
+    }
+
+    private static Pocao criarPocaoVida() {
+        return new Pocao(ITEM_POCAO, "Restaura " + CURA_POCAO + " pontos de vida.", CURA_POCAO);
+    }
+
+    private static Pocao criarPocaoMana() {
+        return new PocaoMana();
     }
 
     private Monstro criarInimigo(TipoInimigo tipo, String nome) {
-        switch (tipo) {
-            case NECROMANTE: return new Necromante(nome);
-            case DEMONIO:    return new Demonio(nome);
-            case DRAGAO:     return new Dragao(nome);
-            case ESQUELETO:
-            default:         return new Esqueleto(nome);
-        }
+        return switch (tipo) {
+            case NECROMANTE -> new Necromante(nome);
+            case DEMONIO -> new Demonio(nome);
+            case DRAGAO -> new Dragao(nome);
+            default -> new Esqueleto(nome);
+        };
     }
 
     // ------------------------------------------------------------------
     // Ações de batalha
     // ------------------------------------------------------------------
 
-    /** Ataque básico do herói seguido do turno do inimigo. */
     public Resultado atacar() {
         List<String> msgs = new ArrayList<>();
-        if (!podeAgir()) {
+        if (podeAgir()) {
             msgs.add("Não há batalha em andamento.");
             return new Resultado(msgs, false, estado);
         }
@@ -266,23 +286,20 @@ public class GerenciadorJogo {
         return new Resultado(msgs, true, estado);
     }
 
-    /** Habilidade especial da classe (fúria do guerreiro / mana do mago). */
     public Resultado usarHabilidade() {
         List<String> msgs = new ArrayList<>();
-        if (!podeAgir()) {
+        if (podeAgir()) {
             msgs.add("Não há batalha em andamento.");
             return new Resultado(msgs, false, estado);
         }
 
-        if (jogador instanceof Guerreiro) {
-            Guerreiro guerreiro = (Guerreiro) jogador;
+        if (jogador instanceof Guerreiro guerreiro) {
             if (guerreiro.getFuria() < 100) {
                 msgs.add("Fúria insuficiente: " + guerreiro.getFuria()
                         + "/100. Atacar gera fúria!");
                 return new Resultado(msgs, false, estado);
             }
-        } else if (jogador instanceof Mago) {
-            Mago mago = (Mago) jogador;
+        } else if (jogador instanceof Mago mago) {
             if (mago.getMana() < 30) {
                 msgs.add("Mana insuficiente: " + mago.getMana() + "/" + mago.getManaTotal()
                         + ". Meditar recupera mana!");
@@ -299,19 +316,17 @@ public class GerenciadorJogo {
         return new Resultado(msgs, true, estado);
     }
 
-    /** Meditação do mago: recupera mana, mas concede um turno ao inimigo. */
     public Resultado meditar() {
         List<String> msgs = new ArrayList<>();
-        if (!(jogador instanceof Mago)) {
+        if (!(jogador instanceof Mago mago)) {
             msgs.add("Apenas magos podem meditar.");
             return new Resultado(msgs, false, estado);
         }
-        Mago mago = (Mago) jogador;
         if (mago.getMana() >= mago.getManaTotal()) {
             msgs.add("Sua mana já está cheia.");
             return new Resultado(msgs, false, estado);
         }
-        if (!podeAgir()) {
+        if (podeAgir()) {
             msgs.add("Não há batalha em andamento.");
             return new Resultado(msgs, false, estado);
         }
@@ -321,14 +336,9 @@ public class GerenciadorJogo {
         return new Resultado(msgs, true, estado);
     }
 
-    /**
-     * Golpe de sangue: sacrifica parte da própria vida por um ataque poderoso.
-     *
-     * @throws VidaInsuficienteException quando a vida atual não supera o custo.
-     */
     public Resultado golpeDeSangue() throws VidaInsuficienteException {
         List<String> msgs = new ArrayList<>();
-        if (!podeAgir()) {
+        if (podeAgir()) {
             msgs.add("Não há batalha em andamento.");
             return new Resultado(msgs, false, estado);
         }
@@ -351,10 +361,9 @@ public class GerenciadorJogo {
         return new Resultado(msgs, true, estado);
     }
 
-    /** Tenta fugir da batalha (o chefe impede a fuga). */
     public Resultado fugir() {
         List<String> msgs = new ArrayList<>();
-        if (!podeAgir()) {
+        if (podeAgir()) {
             msgs.add("Não há batalha em andamento.");
             return new Resultado(msgs, false, estado);
         }
@@ -378,54 +387,61 @@ public class GerenciadorJogo {
     }
 
     // ------------------------------------------------------------------
-    // Inventário
+    // Inventário (integrado a model.Inventario, Pocao e Arma)
     // ------------------------------------------------------------------
 
-    /**
-     * Usa o item na posição informada.
-     *
-     * @throws ItemNaoEncontradoException se a posição não existir no inventário.
-     */
     public Resultado usarItem(int indice) throws ItemNaoEncontradoException {
         List<String> msgs = new ArrayList<>();
-        if (indice < 0 || indice >= inventario.size()) {
+        List<Item> itens = inventarioModel == null
+                ? Collections.emptyList()
+                : inventarioModel.listarItens();
+
+        if (indice < 0 || indice >= itens.size()) {
             throw new ItemNaoEncontradoException("posição " + (indice + 1)
-                    + " do inventário (total: " + inventario.size() + ")");
+                    + " do inventário (total: " + itens.size() + ")");
         }
 
-        String item = inventario.get(indice);
+        Item item = itens.get(indice);
         boolean turnoConsumido = false;
 
-        if (ITEM_POCAO.equals(item)) {
-            if (jogador.getVida() >= jogador.getVidaTotal()) {
-                msgs.add("Sua vida já está cheia. A poção continua na mochila.");
-                return new Resultado(msgs, false, estado);
-            }
-            int antes = jogador.getVida();
-            ((PersonagemJogavel) jogador).curar(CURA_POCAO);
-            inventario.remove(indice);
-            msgs.add("Você bebeu uma Poção de Vida e recuperou "
-                    + (jogador.getVida() - antes) + " de vida.");
-            turnoConsumido = estado == Estado.BATALHA;
-        } else if (ITEM_MANA.equals(item)) {
-            if (!(jogador instanceof Mago)) {
+        if (item instanceof PocaoMana) {
+            if (!(jogador instanceof Mago mago)) {
                 msgs.add("Apenas magos podem absorver Essência de Mana.");
                 return new Resultado(msgs, false, estado);
             }
-            Mago mago = (Mago) jogador;
             if (mago.getMana() >= mago.getManaTotal()) {
                 msgs.add("Sua mana já está cheia. A essência continua na mochila.");
                 return new Resultado(msgs, false, estado);
             }
             int antes = mago.getMana();
             msgs.addAll(capturarSaida(mago::meditar));
-            inventario.remove(indice);
+            inventarioModel.removerItem(item.getNome());
             msgs.add("Você absorveu a Essência de Mana e recuperou "
                     + (mago.getMana() - antes) + " de mana.");
             turnoConsumido = estado == Estado.BATALHA;
+
+        } else if (item instanceof Pocao) {
+            if (jogador.getVida() >= jogador.getVidaTotal()) {
+                msgs.add("Sua vida já está cheia. A poção continua na mochila.");
+                return new Resultado(msgs, false, estado);
+            }
+            int antes = jogador.getVida();
+            inventarioModel.usarPocao(item.getNome());
+            msgs.add("Você bebeu " + item.getNome() + " e recuperou "
+                    + (jogador.getVida() - antes) + " de vida.");
+            turnoConsumido = estado == Estado.BATALHA;
+
+        } else if (item instanceof Arma arma) {
+            if (inventarioModel.getArmaEquipada() == arma) {
+                return desequiparArma();
+            }
+            inventarioModel.equiparArma(arma.getNome());
+            ((PersonagemJogavel) jogador).definirBonusArma(arma.getBonusAtaque());
+            msgs.add("Você equipou " + arma.getNome() + " (+" + arma.getBonusAtaque() + " ATK)!");
+
         } else {
-            inventario.remove(indice);
-            msgs.add("O item " + item + " se desfez em suas mãos.");
+            inventarioModel.removerItem(item.getNome());
+            msgs.add("O item " + item.getNome() + " se desfez em suas mãos.");
         }
 
         if (turnoConsumido) {
@@ -434,20 +450,42 @@ public class GerenciadorJogo {
         return new Resultado(msgs, turnoConsumido, estado);
     }
 
-    /** Índice do primeiro item que pode ser usado agora (-1 se nenhum). */
+    public Resultado desequiparArma() {
+        List<String> msgs = new ArrayList<>();
+        if (inventarioModel != null && inventarioModel.getArmaEquipada() != null) {
+            String nomeArma = inventarioModel.getArmaEquipada().getNome();
+            inventarioModel.desequiparArma();
+            ((PersonagemJogavel) jogador).definirBonusArma(0);
+            msgs.add("Você desequipou " + nomeArma + ".");
+        }
+        return new Resultado(msgs, false, estado);
+    }
+
     public int getIndicePrimeiroItemUtil() {
-        for (int i = 0; i < inventario.size(); i++) {
-            String item = inventario.get(i);
-            if (ITEM_POCAO.equals(item) && jogador != null
-                    && jogador.getVida() < jogador.getVidaTotal()) {
+        if (inventarioModel == null) return -1;
+        List<Item> itens = inventarioModel.listarItens();
+        for (int i = 0; i < itens.size(); i++) {
+            Item item = itens.get(i);
+            if (item instanceof PocaoMana && jogador instanceof Mago
+                    && ((Mago) jogador).getMana() < ((Mago) jogador).getManaTotal()) {
                 return i;
             }
-            if (ITEM_MANA.equals(item) && jogador instanceof Mago
-                    && ((Mago) jogador).getMana() < ((Mago) jogador).getManaTotal()) {
+            if (item instanceof Pocao && !(item instanceof PocaoMana)
+                    && jogador != null && jogador.getVida() < jogador.getVidaTotal()) {
                 return i;
             }
         }
         return -1;
+    }
+
+    public List<Item> getItensInventario() {
+        return inventarioModel == null
+                ? Collections.emptyList()
+                : inventarioModel.listarItens();
+    }
+
+    public Arma getArmaEquipada() {
+        return inventarioModel == null ? null : inventarioModel.getArmaEquipada();
     }
 
     // ------------------------------------------------------------------
@@ -455,8 +493,8 @@ public class GerenciadorJogo {
     // ------------------------------------------------------------------
 
     private boolean podeAgir() {
-        return estado == Estado.BATALHA && jogador != null
-                && inimigo != null && jogador.personagemVivo();
+        return estado != Estado.BATALHA || jogador == null
+                || inimigo == null || !jogador.personagemVivo();
     }
 
     private List<String> turnoInimigo() {
@@ -482,10 +520,7 @@ public class GerenciadorJogo {
     }
 
     private void finalizarVitoria(List<String> msgs) {
-        int recompensa = 0;
-        if (inimigo != null) {
-            recompensa = ((Monstro) inimigo).getRecompensaXP();
-        }
+        int recompensa = inimigo != null ? inimigo.getRecompensaXP() : 0;
         xp += recompensa;
         inimigosDerrotados++;
         if (inimigo != null) {
@@ -566,18 +601,21 @@ public class GerenciadorJogo {
     public int getNivel() { return nivel; }
     public int getInimigosDerrotados() { return inimigosDerrotados; }
 
-    /** XP acumulado no início do nível atual (para desenhar a barra de XP). */
     public int getXpNivelInicio() {
         return nivel <= 1 ? 0 : LIMIARES_XP[Math.min(nivel - 2, LIMIARES_XP.length - 1)];
     }
 
-    /** XP necessário para o próximo nível, ou -1 se já está no máximo. */
     public int getXpProximoNivel() {
         return nivel - 1 < LIMIARES_XP.length ? LIMIARES_XP[nivel - 1] : -1;
     }
 
     public List<String> getInventario() {
-        return Collections.unmodifiableList(inventario);
+        if (inventarioModel == null) return Collections.emptyList();
+        List<String> nomes = new ArrayList<>();
+        for (Item item : inventarioModel.listarItens()) {
+            nomes.add(item.getNome());
+        }
+        return Collections.unmodifiableList(nomes);
     }
 
     public int getSalaAtual() { return salaAtual; }
@@ -594,25 +632,31 @@ public class GerenciadorJogo {
     public boolean isBatalhaDeChefe() {
         return tipoInimigo == TipoInimigo.DRAGAO
                 || (salaAtual >= 0 && salaAtual < salas.size()
-                    && salas.get(salaAtual).tipo == TipoSala.CHEFE);
+                && salas.get(salaAtual).tipo == TipoSala.CHEFE);
     }
 
     // ==================================================================
     // Subclasses controladas (não alteram o model)
     // ==================================================================
 
-    /**
-     * Pequeno contrato implementado pelas subclasses de herói criadas aqui
-     * para permitir cura/evolução sem tocar nas classes do pacote model.
-     */
+    private static final class PocaoMana extends Pocao {
+        PocaoMana() {
+            super(ITEM_MANA, "Restaura a energia mágica de um Mago.", 30);
+        }
+    }
+
     private interface PersonagemJogavel {
         void curar(int quantidade);
         void perderVida(int quantidade);
         void evoluir();
+        void definirBonusArma(int bonus);
+        int getAtaqueBaseSemArma();
     }
 
     private static final class GuerreiroJogavel extends Guerreiro
             implements PersonagemJogavel {
+
+        private int bonusArma = 0;
 
         GuerreiroJogavel(String nome, int vida, int defesa, int ataque) {
             super(nome, vida, vida, defesa, ataque);
@@ -637,10 +681,23 @@ public class GerenciadorJogo {
             this.vidaTotal += 20;
             this.vida = this.vidaTotal;
         }
+
+        @Override
+        public void definirBonusArma(int bonus) {
+            this.ataque = (this.ataque - this.bonusArma) + bonus;
+            this.bonusArma = bonus;
+        }
+
+        @Override
+        public int getAtaqueBaseSemArma() {
+            return this.ataque - this.bonusArma;
+        }
     }
 
     private static final class MagoJogavel extends Mago
             implements PersonagemJogavel {
+
+        private int bonusArma = 0;
 
         MagoJogavel(String nome, int vida, int defesa, int ataque, int mana) {
             super(nome, vida, vida, defesa, ataque, mana);
@@ -665,9 +722,23 @@ public class GerenciadorJogo {
             this.vidaTotal += 20;
             this.vida = this.vidaTotal;
         }
+
+        @Override
+        public void definirBonusArma(int bonus) {
+            this.ataque = (this.ataque - this.bonusArma) + bonus;
+            this.bonusArma = bonus;
+        }
+
+        @Override
+        public int getAtaqueBaseSemArma() {
+            return this.ataque - this.bonusArma;
+        }
     }
 
-    /** Exporta o estado utilizado de fato pela interface gráfica. */
+    // ==================================================================
+    // Persistência (compatível com ProgressoJogo)
+    // ==================================================================
+
     public persistence.ProgressoJogo exportarProgresso() {
         if (jogador == null || estado == Estado.MENU) {
             throw new IllegalStateException("Inicie uma jornada antes de salvar.");
@@ -680,7 +751,7 @@ public class GerenciadorJogo {
         p.setProperty("estado", estado.name());
         p.setProperty("vida", String.valueOf(getVida()));
         p.setProperty("vidaTotal", String.valueOf(getVidaTotal()));
-        p.setProperty("ataque", String.valueOf(getAtaque()));
+        p.setProperty("ataque", String.valueOf(((PersonagemJogavel) jogador).getAtaqueBaseSemArma()));
         p.setProperty("defesa", String.valueOf(getDefesa()));
         p.setProperty("mana", String.valueOf(getMana()));
         p.setProperty("manaTotal", String.valueOf(getManaTotal()));
@@ -690,6 +761,11 @@ public class GerenciadorJogo {
         p.setProperty("nivel", String.valueOf(nivel));
         p.setProperty("derrotados", String.valueOf(inimigosDerrotados));
         p.setProperty("turnos", String.valueOf(turnosInimigo));
+
+        Arma equipada = getArmaEquipada();
+        if (equipada != null) {
+            p.setProperty("armaEquipada", equipada.getNome());
+        }
 
         for (int i = 0; i < salas.size(); i++) {
             p.setProperty("visitada." + i, String.valueOf(salas.get(i).visitada));
@@ -705,10 +781,9 @@ public class GerenciadorJogo {
             }
         }
 
-        return new persistence.ProgressoJogo(p, inventario);
+        return new persistence.ProgressoJogo(p, getInventario());
     }
 
-    /** Valida separadamente para preservar a partida se o save for inválido. */
     public void restaurarProgresso(persistence.ProgressoJogo progresso) {
         GerenciadorJogo novo = new GerenciadorJogo();
         novo.lerProgresso(progresso);
@@ -724,8 +799,7 @@ public class GerenciadorJogo {
         inimigosDerrotados = novo.inimigosDerrotados;
         turnosInimigo = novo.turnosInimigo;
         salas = novo.salas;
-        inventario.clear();
-        inventario.addAll(novo.inventario);
+        inventarioModel = novo.inventarioModel;
     }
 
     private void lerProgresso(persistence.ProgressoJogo progresso) {
@@ -750,7 +824,7 @@ public class GerenciadorJogo {
 
         jogador = classeJogador == Classe.MAGO
                 ? new MagoJogavel(nome, total, defesa, ataque,
-                    inteiroSalvo(p, "manaTotal", 0, Integer.MAX_VALUE))
+                inteiroSalvo(p, "manaTotal", 0, Integer.MAX_VALUE))
                 : new GuerreiroJogavel(nome, total, defesa, ataque);
 
         jogador.restaurarVida(inteiroSalvo(p, "vida", 0, total));
@@ -779,12 +853,22 @@ public class GerenciadorJogo {
             throw new IllegalArgumentException("Sala atual não visitada.");
         }
 
-        inventario.clear();
-        for (String item : progresso.getItens()) {
-            if (!ITEM_POCAO.equals(item) && !ITEM_MANA.equals(item)) {
-                throw new IllegalArgumentException("Item salvo desconhecido.");
+        inventarioModel = new Inventario(jogador);
+        for (String nomeItem : progresso.getItens()) {
+            inventarioModel.adicionarItem(recriarItemSalvo(nomeItem));
+        }
+
+        String armaSalva = p.getProperty("armaEquipada");
+        if (armaSalva != null && !armaSalva.isBlank()) {
+            try {
+                inventarioModel.equiparArma(armaSalva);
+                Arma eq = inventarioModel.getArmaEquipada();
+                if (eq != null) {
+                    ((PersonagemJogavel) jogador).definirBonusArma(eq.getBonusAtaque());
+                }
+            } catch (ItemNaoEncontradoException ignorado) {
+                // Ignora se a arma salva não existir mais na lista.
             }
-            inventario.add(item);
         }
 
         if (p.containsKey("inimigo.tipo")) {
@@ -814,17 +898,30 @@ public class GerenciadorJogo {
         }
     }
 
+    private static Item recriarItemSalvo(String nome) {
+        return switch (nome) {
+            case ITEM_POCAO -> criarPocaoVida();
+            case ITEM_MANA -> criarPocaoMana();
+            case "Espada de Ferro" ->
+                    new Arma("Espada de Ferro", "Lâmina equilibrada forjada pelos ferreiros do reino.", 5);
+            case "Cajado de Aprendiz" ->
+                    new Arma("Cajado de Aprendiz", "Canaliza energia arcana para ampliar golpes e feitiços.", 5);
+            case "Lâmina de Aço" -> new Arma("Lâmina de Aço", "Espada temperada capaz de atravessar armaduras.", 10);
+            case "Cajado Rúnico" -> new Arma("Cajado Rúnico", "Relíquia gravada com runas antigas de poder.", 10);
+            default -> throw new IllegalArgumentException("Item salvo desconhecido: " + nome);
+        };
+    }
+
     private static int inteiroSalvo(java.util.Properties p,
-                                   String chave, int minimo, int maximo) {
+                                    String chave, int minimo, int maximo) {
         try {
             int valor = Integer.parseInt(p.getProperty(chave, ""));
             if (valor >= minimo && valor <= maximo) {
                 return valor;
             }
         } catch (NumberFormatException ignorado) {
-            // O campo inválido será identificado abaixo.
+            // Identificado abaixo.
         }
         throw new IllegalArgumentException("Campo salvo inválido: " + chave);
     }
 }
-
