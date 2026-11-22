@@ -31,11 +31,7 @@ public class DialogoPixel extends JDialog {
     private static final int MARGEM = 10;
     private static final int LARGURA_TEXTO = LARGURA - 2 * 54;
 
-    private final String titulo;
-    private final List<String> linhas;
-    private final boolean confirmacao;
     private boolean confirmado;
-    private final int altura;
 
     public DialogoPixel(Window dono, String titulo, String mensagem) {
         this(dono, titulo, mensagem, false);
@@ -43,19 +39,17 @@ public class DialogoPixel extends JDialog {
 
     private DialogoPixel(Window dono, String titulo, String mensagem, boolean confirmacao) {
         super(dono, ModalityType.APPLICATION_MODAL);
-        this.titulo = titulo;
-        this.confirmacao = confirmacao;
 
         BufferedImage tmp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = tmp.createGraphics();
         AssetManager.preparar(g2);
         g2.setFont(Estilo.FONTE_CORPO);
         FontMetrics fm = g2.getFontMetrics();
-        this.linhas = Estilo.quebrar(mensagem == null ? "" : mensagem, fm, LARGURA_TEXTO);
+        List<String> linhas = Estilo.quebrar(mensagem == null ? "" : mensagem, fm, LARGURA_TEXTO);
         g2.dispose();
 
         int alturaTexto = Math.max(24, linhas.size() * 24);
-        this.altura = Math.max(292, 170 + alturaTexto + 70);
+        int altura = Math.max(292, 170 + alturaTexto + 70);
 
         setUndecorated(true);
         setResizable(false);

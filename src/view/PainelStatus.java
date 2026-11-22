@@ -2,6 +2,8 @@ package view;
 
 import controller.GerenciadorJogo;
 import exception.ItemNaoEncontradoException;
+import model.Arma;
+import model.Item;
 import view.component.BotaoPixel;
 import view.component.DialogoPixel;
 import view.component.HudJogador;
@@ -23,7 +25,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 
-/** Ficha do herói e inventário, com uso de itens fora de combate. */
+/** Ficha do herói e inventário, com equipamento de armas e uso de poções fora de combate. */
 public class PainelStatus extends JPanel {
 
     private static final int X_LISTA = 500;
@@ -36,8 +38,11 @@ public class PainelStatus extends JPanel {
     private final GerenciadorJogo jogo;
     private final HudJogador hud;
     private final BotaoPixel btnUsar;
+    private final BotaoPixel btnEquipar;
+    private final BotaoPixel btnDesequipar;
 
     private int selecionado;
+    private int inicioVisivel;
 
     public PainelStatus(TelaPrincipal tela, GerenciadorJogo jogo) {
         this.tela = tela;
@@ -56,6 +61,18 @@ public class PainelStatus extends JPanel {
         btnUsar.setAtalho("U");
         add(btnUsar);
 
+        btnEquipar = new BotaoPixel("EQUIPAR", this::usar, 180, 48);
+        btnEquipar.setBounds(480, 520, 180, 48);
+        btnEquipar.setAtalho("U");
+        btnEquipar.setVisible(false);
+        add(btnEquipar);
+
+        btnDesequipar = new BotaoPixel("DESEQUIPAR", this::usar, 180, 48);
+        btnDesequipar.setBounds(480, 520, 180, 48);
+        btnDesequipar.setAtalho("U");
+        btnDesequipar.setVisible(false);
+        add(btnDesequipar);
+
         BotaoPixel btnVoltar = new BotaoPixel("VOLTAR", this::voltarMapa, 180, 48);
         btnVoltar.setBounds(760, 520, 180, 48);
         btnVoltar.setAtalho("ESC");
@@ -67,49 +84,43 @@ public class PainelStatus extends JPanel {
                 int indice = indiceItem(e.getX(), e.getY());
                 if (indice >= 0) {
                     selecionado = indice;
+                    atualizarBotaoAcao();
                     requestFocusInWindow();
                     repaint();
+                    if (e.getClickCount() == 2) {
+                        usar();
+                    }
                 }
             }
         });
 
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(
-                KeyStroke.getKeyStroke("UP"), "anterior");
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(
-                KeyStroke.getKeyStroke("DOWN"), "proximo");
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(
-                KeyStroke.getKeyStroke("U"), "usar");
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(
-                KeyStroke.getKeyStroke("ESCAPE"), "voltar");
+        addMouseWheelListener(e -> {
+            if (isShowing()) {
+                moverSelecao(e.getWheelRotation() > 0 ? 1 : -1);
+            }
+        });
 
-        getActionMap().put("anterior", new AbstractAction() {
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("UP"), "anterior");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("DOWN"), "proximo");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("U"), "usar");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("ENTER"), "usar");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("ESCAPE"), "voltar");
+
+        getActionMap().put("anterior", acao(() -> moverSelecao(-1)));
+        getActionMap().put("proximo", acao(() -> moverSelecao(1)));
+        getActionMap().put("usar", acao(this::usar));
+        getActionMap().put("voltar", acao(this::voltarMapa));
+    }
+
+    private AbstractAction acao(Runnable r) {
+        return new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (!isShowing()) return;
-                moverSelecao(-1);
+                if (isShowing()) {
+                    r.run();
+                }
             }
-        });
-        getActionMap().put("proximo", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (!isShowing()) return;
-                moverSelecao(1);
-            }
-        });
-        getActionMap().put("usar", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (!isShowing()) return;
-                usar();
-            }
-        });
-        getActionMap().put("voltar", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (!isShowing()) return;
-                voltarMapa();
-            }
-        });
+        };
     }
 
     /** Atualiza a seleção e o HUD ao entrar na tela. */
@@ -124,21 +135,24 @@ public class PainelStatus extends JPanel {
         if (x < X_LISTA || x > X_LISTA + 420) {
             return -1;
         }
-        int indice = (y - Y_LISTA) / (ALTURA_ITEM + ESPACO_ITEM);
-        if (y < Y_LISTA || indice < 0 || indice >= MAX_VISIVEIS) {
+        int linha = (y - Y_LISTA) / (ALTURA_ITEM + ESPACO_ITEM);
+        if (y < Y_LISTA || linha < 0 || linha >= MAX_VISIVEIS) {
             return -1;
         }
-        int topo = Y_LISTA + indice * (ALTURA_ITEM + ESPACO_ITEM);
+        int topo = Y_LISTA + linha * (ALTURA_ITEM + ESPACO_ITEM);
         if (y > topo + ALTURA_ITEM) {
             return -1;
         }
-        return indice < jogo.getInventario().size() ? indice : -1;
+        int indiceReal = inicioVisivel + linha;
+        return indiceReal < jogo.getItensInventario().size() ? indiceReal : -1;
     }
 
     private void moverSelecao(int delta) {
-        int total = jogo.getInventario().size();
+        int total = jogo.getItensInventario().size();
         if (total == 0) {
             selecionado = -1;
+            inicioVisivel = 0;
+            atualizarBotaoAcao();
             repaint();
             return;
         }
@@ -147,22 +161,63 @@ public class PainelStatus extends JPanel {
         } else {
             selecionado = (selecionado + delta + total) % total;
         }
+        garantirVisibilidade();
+        atualizarBotaoAcao();
         repaint();
     }
 
+    private void garantirVisibilidade() {
+        if (selecionado < inicioVisivel) {
+            inicioVisivel = selecionado;
+        } else if (selecionado >= inicioVisivel + MAX_VISIVEIS) {
+            inicioVisivel = selecionado - MAX_VISIVEIS + 1;
+        }
+    }
+
     private void ajustarSelecao() {
-        int total = jogo.getInventario().size();
+        List<Item> itens = jogo.getItensInventario();
+        int total = itens.size();
         if (total == 0) {
             selecionado = -1;
+            inicioVisivel = 0;
         } else {
             selecionado = Math.max(0, Math.min(selecionado, total - 1));
+            inicioVisivel = Math.max(0, Math.min(inicioVisivel, Math.max(0, total - MAX_VISIVEIS)));
+            garantirVisibilidade();
         }
-        btnUsar.setEnabled(total > 0);
+        atualizarBotaoAcao();
+    }
+
+    private void atualizarBotaoAcao() {
+        List<Item> itens = jogo.getItensInventario();
+        btnUsar.setVisible(false);
+        btnEquipar.setVisible(false);
+        btnDesequipar.setVisible(false);
+
+        if (itens.isEmpty() || selecionado < 0 || selecionado >= itens.size()) {
+            btnUsar.setVisible(true);
+            btnUsar.setEnabled(false);
+            return;
+        }
+
+        Item atual = itens.get(selecionado);
+        if (atual instanceof Arma) {
+            if (atual == jogo.getArmaEquipada()) {
+                btnDesequipar.setVisible(true);
+                btnDesequipar.setEnabled(true);
+            } else {
+                btnEquipar.setVisible(true);
+                btnEquipar.setEnabled(true);
+            }
+        } else {
+            btnUsar.setVisible(true);
+            btnUsar.setEnabled(true);
+        }
     }
 
     private void usar() {
-        List<String> inventario = jogo.getInventario();
-        if (inventario.isEmpty()) {
+        List<Item> itens = jogo.getItensInventario();
+        if (itens.isEmpty() || selecionado < 0) {
             tela.mostrarAviso("INVENTARIO",
                     "Sua mochila está vazia.\nDerrote inimigos e procure baús pelo mapa.");
             return;
@@ -199,7 +254,7 @@ public class PainelStatus extends JPanel {
             desenharInventario(g2);
 
             PixelFont.desenharCentralizado(g2,
-                    "SETAS ESCOLHEM   -   U USA O ITEM   -   ESC VOLTA AO MAPA",
+                    "SETAS ESCOLHEM   -   U / ENTER USA OU EQUIPA   -   ESC VOLTA AO MAPA",
                     w / 2, 580, 1, Estilo.CREME, Estilo.PRETO);
         } finally {
             g2.dispose();
@@ -212,33 +267,29 @@ public class PainelStatus extends JPanel {
                 Estilo.OURO_CLARO, Estilo.PRETO);
 
         String sprite = Sprites.daClasse(jogo.getClasseJogador());
-        Estilo.sombraProjetada(g2, 240, 298, 112);
-        AssetManager.desenhar(g2, sprite, 160, 142, 160, 160);
+        Estilo.sombraProjetada(g2, 175, 298, 108);
+        AssetManager.desenhar(g2, sprite, 95, 142, 160, 160);
 
-        PixelFont.centralizadoComSombra(g2, jogo.getNomeJogador(), 240, 310, 2,
+        desenharSlotArmaEquipada(g2);
+
+        PixelFont.centralizadoComSombra(g2, jogo.getNomeJogador(), 175, 310, 2,
                 Estilo.CREME, Estilo.PRETO);
-        PixelFont.desenharCentralizado(g2, jogo.getNomeClasse() + "  -  NIVEL "
-                + jogo.getNivel(), 240, 334, 1, Estilo.OURO, Estilo.PRETO);
+        PixelFont.desenharCentralizado(g2, jogo.getNomeClasse() + " - NIVEL " + jogo.getNivel(),
+                175, 334, 1, Estilo.OURO, Estilo.PRETO);
 
-        PixelFont.desenharComSombra(g2, "VIDA " + jogo.getVida() + "/"
-                        + jogo.getVidaTotal(), 44, 358, 1,
-                Estilo.TEXTO, Estilo.PRETO);
+        PixelFont.desenharComSombra(g2, "VIDA " + jogo.getVida() + "/" + jogo.getVidaTotal(),
+                44, 358, 1, Estilo.TEXTO, Estilo.PRETO);
         Estilo.barra(g2, 44, 376, 392, 16,
                 jogo.getVidaTotal() == 0 ? 0 : jogo.getVida() / (double) jogo.getVidaTotal(),
                 Estilo.VERMELHO, Estilo.VERMELHO_ESCURO);
 
-        PixelFont.desenharComSombra(g2, "ATAQUE " + jogo.getAtaque(),
-                44, 404, 1, Estilo.TEXTO, Estilo.PRETO);
-        PixelFont.desenharComSombra(g2, "DEFESA " + jogo.getDefesa(),
-                250, 404, 1, Estilo.TEXTO, Estilo.PRETO);
+        desenharLinhaAtaqueEDefesa(g2);
 
         if (jogo.isMago()) {
-            PixelFont.desenharComSombra(g2, "MANA " + jogo.getMana() + "/"
-                            + jogo.getManaTotal(), 44, 426, 1,
-                    Estilo.TEXTO, Estilo.PRETO);
+            PixelFont.desenharComSombra(g2, "MANA " + jogo.getMana() + "/" + jogo.getManaTotal(),
+                    44, 426, 1, Estilo.TEXTO, Estilo.PRETO);
             Estilo.barra(g2, 44, 442, 392, 16,
-                    jogo.getManaTotal() == 0 ? 0
-                            : jogo.getMana() / (double) jogo.getManaTotal(),
+                    jogo.getManaTotal() == 0 ? 0 : jogo.getMana() / (double) jogo.getManaTotal(),
                     Estilo.AZUL, Estilo.AZUL_ESCURO);
         } else {
             PixelFont.desenharComSombra(g2, "FURIA " + jogo.getFuria() + "/100",
@@ -257,10 +308,82 @@ public class PainelStatus extends JPanel {
             fracaoXp = (jogo.getXp() - inicio) / (double) Math.max(1, proximo - inicio);
             textoXp = "XP " + jogo.getXp() + "/" + proximo;
         }
-        PixelFont.desenharComSombra(g2, textoXp, 44, 466, 1,
-                Estilo.TEXTO, Estilo.PRETO);
-        Estilo.barra(g2, 44, 482, 392, 12, fracaoXp,
-                Estilo.OURO, Estilo.OURO_ESCURO);
+        PixelFont.desenharComSombra(g2, textoXp, 44, 466, 1, Estilo.TEXTO, Estilo.PRETO);
+        Estilo.barra(g2, 44, 482, 392, 12, fracaoXp, Estilo.OURO, Estilo.OURO_ESCURO);
+    }
+
+    private void desenharSlotArmaEquipada(Graphics2D g2) {
+        int x = 304;
+        int y = 156;
+        int w = 132;
+        int h = 136;
+
+        Arma equipada = jogo.getArmaEquipada();
+        Color borda = equipada != null ? Estilo.VERDE : Estilo.BORDA_CLARA;
+        Estilo.painel(g2, x, y, w, h, new Color(12, 20, 32), borda, Estilo.BORDA_ESCURA);
+
+        PixelFont.desenharCentralizado(g2, "EQUIPADA", x + w / 2, y + 18, 1,
+                Estilo.OURO_CLARO, Estilo.PRETO);
+
+        int boxX = x + (w - 48) / 2;
+        int boxY = y + 28;
+        g2.setColor(new Color(22, 34, 52));
+        g2.fillRect(boxX, boxY, 48, 48);
+        g2.setColor(equipada != null ? Estilo.OURO : Estilo.BORDA_ESCURA);
+        g2.drawRect(boxX, boxY, 48, 48);
+
+        if (equipada != null) {
+            desenharIconeItem(g2, equipada, boxX + 8, boxY + 8);
+            String nomeCurto = equipada.getNome().toUpperCase();
+            if (nomeCurto.length() > 16) {
+                nomeCurto = nomeCurto.substring(0, 15) + ".";
+            }
+            PixelFont.desenharCentralizado(g2, nomeCurto, x + w / 2, y + 96, 1,
+                    Estilo.CREME, Estilo.PRETO);
+            PixelFont.desenharCentralizado(g2, "+" + equipada.getBonusAtaque() + " ATK",
+                    x + w / 2, y + 116, 1, Estilo.VERDE, Estilo.PRETO);
+        } else {
+            g2.setColor(new Color(60, 72, 92));
+            g2.fillRect(boxX + 22, boxY + 10, 4, 22);
+            g2.fillRect(boxX + 16, boxY + 28, 16, 3);
+            g2.fillRect(boxX + 22, boxY + 31, 4, 7);
+
+            PixelFont.desenharCentralizado(g2, "NENHUMA", x + w / 2, y + 102, 1,
+                    Estilo.TEXTO_APAGADO, Estilo.PRETO);
+        }
+    }
+
+    private void desenharLinhaAtaqueEDefesa(Graphics2D g2) {
+        int x = 44;
+        int y = 404;
+
+        int atkAtual = jogo.getAtaque();
+        List<Item> itens = jogo.getItensInventario();
+        Item selItem = (selecionado >= 0 && selecionado < itens.size()) ? itens.get(selecionado) : null;
+
+        if (selItem instanceof Arma candidata) {
+            Arma equipada = jogo.getArmaEquipada();
+            int bonusAtual = equipada == null ? 0 : equipada.getBonusAtaque();
+            int atkPrevisto = atkAtual - bonusAtual + candidata.getBonusAtaque();
+            int diff = atkPrevisto - atkAtual;
+
+            if (diff != 0) {
+                Color corDiff = diff > 0 ? Estilo.VERDE : Estilo.VERMELHO;
+                String sinal = diff > 0 ? "+" + diff : String.valueOf(diff);
+                PixelFont.desenharComSombra(g2,
+                        "ATAQUE " + atkAtual + " -> " + atkPrevisto + " (" + sinal + ")",
+                        x, y, 1, corDiff, Estilo.PRETO);
+            } else {
+                PixelFont.desenharComSombra(g2, "ATAQUE " + atkAtual + " (EQUIPADA)",
+                        x, y, 1, Estilo.VERDE, Estilo.PRETO);
+            }
+        } else {
+            PixelFont.desenharComSombra(g2, "ATAQUE " + atkAtual,
+                    x, y, 1, Estilo.TEXTO, Estilo.PRETO);
+        }
+
+        PixelFont.desenharComSombra(g2, "DEFESA " + jogo.getDefesa(),
+                x + 246, y, 1, Estilo.TEXTO, Estilo.PRETO);
     }
 
     private void desenharInventario(Graphics2D g2) {
@@ -268,7 +391,9 @@ public class PainelStatus extends JPanel {
         PixelFont.desenharComSombra(g2, "INVENTARIO", 504, 120, 2,
                 Estilo.OURO_CLARO, Estilo.PRETO);
 
-        List<String> itens = jogo.getInventario();
+        List<Item> itens = jogo.getItensInventario();
+        Arma equipada = jogo.getArmaEquipada();
+
         if (itens.isEmpty()) {
             PixelFont.desenharCentralizado(g2, "MOCHILA VAZIA", 710, 260, 2,
                     Estilo.TEXTO_APAGADO, Estilo.PRETO);
@@ -277,16 +402,24 @@ public class PainelStatus extends JPanel {
             return;
         }
 
-        for (int i = 0; i < itens.size() && i < MAX_VISIVEIS; i++) {
-            String item = itens.get(i);
-            int y = Y_LISTA + i * (ALTURA_ITEM + ESPACO_ITEM);
-            boolean ativo = i == selecionado;
+        g2.setFont(Estilo.FONTE_PEQUENA);
+        FontMetrics fm = g2.getFontMetrics();
 
-            Color fundo = ativo ? new Color(52, 44, 28) : new Color(20, 30, 44);
-            Color bordaClara = ativo ? Estilo.OURO : Estilo.BORDA_CLARA;
+        int fim = Math.min(itens.size(), inicioVisivel + MAX_VISIVEIS);
+        for (int i = inicioVisivel; i < fim; i++) {
+            Item item = itens.get(i);
+            int linha = i - inicioVisivel;
+            int y = Y_LISTA + linha * (ALTURA_ITEM + ESPACO_ITEM);
+            boolean ativo = (i == selecionado);
+            boolean estaEquipada = (item == equipada);
+
+            Color fundo = ativo ? new Color(52, 44, 28)
+                    : (estaEquipada ? new Color(20, 42, 34) : new Color(20, 30, 44));
+            Color bordaClara = ativo ? Estilo.OURO
+                    : (estaEquipada ? Estilo.VERDE : Estilo.BORDA_CLARA);
             Color bordaEscura = ativo ? Estilo.OURO_ESCURO : Estilo.BORDA_ESCURA;
-            Estilo.painel(g2, X_LISTA, y, 420, ALTURA_ITEM, fundo,
-                    bordaClara, bordaEscura);
+
+            Estilo.painel(g2, X_LISTA, y, 420, ALTURA_ITEM, fundo, bordaClara, bordaEscura);
             if (ativo) {
                 g2.setColor(Estilo.OURO_CLARO);
                 g2.drawRect(X_LISTA + 3, y + 3, 413, ALTURA_ITEM - 7);
@@ -297,32 +430,70 @@ public class PainelStatus extends JPanel {
 
             desenharIconeItem(g2, item, X_LISTA + 10, y + 9);
 
-            PixelFont.desenharComSombra(g2, item, X_LISTA + 54, y + 8, 2,
+            PixelFont.desenharComSombra(g2, item.getNome(), X_LISTA + 54, y + 8, 2,
                     ativo ? Estilo.OURO_CLARO : Estilo.CREME, Estilo.PRETO);
 
-            Estilo.textoComSombra(g2, descricaoItem(item), X_LISTA + 54, y + 34,
+            if (estaEquipada) {
+                PixelFont.desenharComSombra(g2, "[EQUIPADA]", X_LISTA + 312, y + 10, 1,
+                        Estilo.VERDE, Estilo.PRETO);
+            } else if (item instanceof Arma arma) {
+                int bonusAtual = equipada == null ? 0 : equipada.getBonusAtaque();
+                int diff = arma.getBonusAtaque() - bonusAtual;
+                String tagDiff = diff > 0 ? "(+" + diff + " ATK)"
+                        : (diff < 0 ? "(" + diff + " ATK)" : "(IGUAL)");
+                Color corDiff = diff > 0 ? Estilo.VERDE
+                        : (diff < 0 ? Estilo.VERMELHO : Estilo.TEXTO_APAGADO);
+                PixelFont.desenharComSombra(g2, tagDiff, X_LISTA + 322, y + 10, 1,
+                        corDiff, Estilo.PRETO);
+            }
+
+            String descAjustada = truncarTexto(descricaoItem(item), fm);
+            Estilo.textoComSombra(g2, descAjustada, X_LISTA + 54, y + 34,
                     ativo ? Estilo.TEXTO : Estilo.TEXTO_APAGADO, Estilo.FONTE_PEQUENA);
         }
 
         if (itens.size() > MAX_VISIVEIS) {
-            PixelFont.desenharComSombra(g2, "..." + (itens.size() - MAX_VISIVEIS)
-                            + " ITENS", 504, 500, 1,
-                    Estilo.TEXTO_APAGADO, Estilo.PRETO);
+            PixelFont.desenharComSombra(g2,
+                    "ITEM " + (selecionado + 1) + "/" + itens.size() + " (ROLE PARA VER MAIS)",
+                    504, 496, 1, Estilo.TEXTO_APAGADO, Estilo.PRETO);
         }
     }
 
-    private String descricaoItem(String item) {
-        if (GerenciadorJogo.ITEM_POCAO.equals(item)) {
-            return "Recupera 30 pontos de vida.";
+    private String truncarTexto(String texto, FontMetrics fm) {
+        int larguraMax = 336;
+        if (texto == null) return "";
+        if (fm.stringWidth(texto) <= larguraMax) {
+            return texto;
         }
-        if (GerenciadorJogo.ITEM_MANA.equals(item)) {
-            return "Recupera mana. Somente para magos.";
+        String reticencias = "...";
+        int limite = larguraMax - fm.stringWidth(reticencias);
+        int fim = texto.length();
+        while (fim > 0 && fm.stringWidth(texto.substring(0, fim)) > limite) {
+            fim--;
         }
-        return "Um item misterioso.";
+        return texto.substring(0, fim).trim() + reticencias;
     }
 
-    private void desenharIconeItem(Graphics2D g2, String item, int x, int y) {
-        boolean mana = GerenciadorJogo.ITEM_MANA.equals(item);
+    private String descricaoItem(Item item) {
+        if (item instanceof Arma arma) {
+            return "+" + arma.getBonusAtaque() + " ATK - " + arma.getDescricao();
+        }
+        return item.getDescricao();
+    }
+
+    /** Desenha o sprite pixel art específico de Espada, Cajado ou Poção (32x32). */
+    private void desenharIconeItem(Graphics2D g2, Item item, int x, int y) {
+        if (item instanceof Arma) {
+            String nome = item.getNome().toLowerCase();
+            if (nome.contains("cajado") || nome.contains("varinha") || nome.contains("cetro")) {
+                desenharSpriteCajado(g2, x, y);
+            } else {
+                desenharSpriteEspada(g2, x, y);
+            }
+            return;
+        }
+
+        boolean mana = GerenciadorJogo.ITEM_MANA.equals(item.getNome());
         Color liquido = mana ? Estilo.AZUL : Estilo.VERMELHO;
 
         g2.setColor(Estilo.PRETO);
@@ -338,5 +509,60 @@ public class PainelStatus extends JPanel {
         g2.fillRect(x + 10, y + 18, 4, 4);
         g2.setColor(new Color(0xE8E8F0));
         g2.fillRect(x + 13, y + 7, 2, 4);
+    }
+
+    private void desenharSpriteEspada(Graphics2D g2, int x, int y) {
+        g2.setColor(Estilo.PRETO);
+        for (int i = 0; i < 16; i++) {
+            g2.fillRect(x + 23 - i, y + 3 + i, 6, 6);
+        }
+        g2.setColor(new Color(0x9BAEC2));
+        for (int i = 0; i < 15; i++) {
+            g2.fillRect(x + 24 - i, y + 4 + i, 4, 4);
+        }
+        g2.setColor(new Color(0xF0F6FC));
+        for (int i = 0; i < 14; i++) {
+            g2.fillRect(x + 25 - i, y + 4 + i, 2, 2);
+        }
+        g2.setColor(Estilo.PRETO);
+        g2.fillRect(x + 5, y + 16, 14, 6);
+        g2.setColor(Estilo.OURO);
+        g2.fillRect(x + 6, y + 17, 12, 4);
+        g2.setColor(Estilo.OURO_CLARO);
+        g2.fillRect(x + 7, y + 17, 4, 2);
+
+        g2.setColor(Estilo.PRETO);
+        g2.fillRect(x + 4, y + 22, 6, 6);
+        g2.setColor(new Color(0x7C4D2B));
+        g2.fillRect(x + 5, y + 22, 4, 4);
+        g2.setColor(Estilo.OURO);
+        g2.fillRect(x + 3, y + 26, 4, 4);
+    }
+
+    private void desenharSpriteCajado(Graphics2D g2, int x, int y) {
+        g2.setColor(Estilo.PRETO);
+        for (int i = 0; i < 18; i++) {
+            g2.fillRect(x + 20 - i, y + 9 + i, 5, 5);
+        }
+        g2.setColor(new Color(0x8C5828));
+        for (int i = 0; i < 17; i++) {
+            g2.fillRect(x + 21 - i, y + 10 + i, 3, 3);
+        }
+        g2.setColor(new Color(0xB87A3D));
+        for (int i = 0; i < 15; i++) {
+            g2.fillRect(x + 21 - i, y + 10 + i, 1, 1);
+        }
+
+        g2.setColor(Estilo.PRETO);
+        g2.fillRect(x + 18, y + 3, 10, 10);
+        g2.setColor(Estilo.OURO);
+        g2.fillRect(x + 19, y + 6, 8, 6);
+
+        g2.setColor(new Color(0x2E86DE));
+        g2.fillRect(x + 20, y + 3, 6, 6);
+        g2.setColor(new Color(0x54E8FF));
+        g2.fillRect(x + 21, y + 4, 4, 4);
+        g2.setColor(Color.WHITE);
+        g2.fillRect(x + 21, y + 4, 2, 2);
     }
 }
