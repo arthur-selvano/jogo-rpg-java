@@ -51,6 +51,7 @@ public class PainelMenu extends JPanel {
         setPreferredSize(new Dimension(LARGURA, ALTURA));
         setFocusable(true);
         setLayout(null);
+        setBackground(Estilo.PRETO);
 
         int x = (LARGURA - LARGURA_BOTAO) / 2;
         areas[0] = new Rectangle(x, 330, LARGURA_BOTAO, ALTURA_BOTAO);
@@ -151,6 +152,7 @@ public class PainelMenu extends JPanel {
     }
 
     private int indiceNaPosicao(Point ponto) {
+        ponto = Estilo.posicaoNaTela(this, ponto, LARGURA, ALTURA);
         for (int i = 0; i < areas.length; i++) {
             if (areas[i].contains(ponto)) {
                 return i;
@@ -175,9 +177,10 @@ public class PainelMenu extends JPanel {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            Estilo.escalarTela(g2, this, LARGURA, ALTURA);
             AssetManager.preparar(g2);
-            int w = getWidth();
-            int h = getHeight();
+            int w = LARGURA;
+            int h = ALTURA;
 
             Estilo.fundoGrama(g2, w, h);
             desenharTrilha(g2, w, h);

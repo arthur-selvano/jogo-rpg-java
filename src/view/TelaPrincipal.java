@@ -52,7 +52,7 @@ public class TelaPrincipal extends JFrame {
         super("RPG - A Lenda do Reino Perdido");
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setResizable(false);
+        setResizable(true);
         try {
             setIconImage(AssetManager.get(Sprites.PLAYER));
         } catch (RuntimeException ignorado) {

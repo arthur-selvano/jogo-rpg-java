@@ -20,6 +20,7 @@ import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -49,6 +50,7 @@ public class PainelStatus extends JPanel {
         this.jogo = jogo;
 
         setLayout(null);
+        setBackground(Estilo.PRETO);
         setFocusable(true);
         setPreferredSize(new Dimension(TelaPrincipal.LARGURA, TelaPrincipal.ALTURA));
 
@@ -81,7 +83,9 @@ public class PainelStatus extends JPanel {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                int indice = indiceItem(e.getX(), e.getY());
+                Point ponto = Estilo.posicaoNaTela(PainelStatus.this, e.getPoint(),
+                        TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
+                int indice = indiceItem(ponto.x, ponto.y);
                 if (indice >= 0) {
                     selecionado = indice;
                     atualizarBotaoAcao();
@@ -239,13 +243,19 @@ public class PainelStatus extends JPanel {
     }
 
     @Override
+    public void doLayout() {
+        Estilo.ajustarLayout(this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            Estilo.escalarTela(g2, this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
             AssetManager.preparar(g2);
-            int w = getWidth();
-            int h = getHeight();
+            int w = TelaPrincipal.LARGURA;
+            int h = TelaPrincipal.ALTURA;
             Estilo.fundoGrama(g2, w, h);
             Estilo.escurecer(g2, w, h, new Color(8, 18, 12, 122));
             Estilo.vinheta(g2, w, h);

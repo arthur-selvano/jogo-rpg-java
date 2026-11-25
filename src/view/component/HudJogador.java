@@ -9,6 +9,7 @@ import view.util.Sprites;
 import javax.swing.JComponent;
 import javax.swing.Timer;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.util.Random;
@@ -146,9 +147,10 @@ public class HudJogador extends JComponent {
         sincronizarEstado(false);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            Dimension tamanho = Estilo.escalarComponente(g2, this);
             AssetManager.preparar(g2);
-            int w = getWidth();
-            int h = getHeight();
+            int w = tamanho.width;
+            int h = tamanho.height;
 
             Estilo.painelZelda(g2, 0, 0, w, h, Estilo.FUNDO_HUD);
             g2.setColor(new Color(255, 240, 180, 30));

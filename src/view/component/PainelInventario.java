@@ -5,6 +5,7 @@ import exception.ItemNaoEncontradoException;
 import model.Arma;
 import model.Item;
 import model.Pocao;
+import view.TelaPrincipal;
 import view.util.Estilo;
 import view.util.PixelFont;
 
@@ -15,6 +16,7 @@ import java.awt.Color;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
@@ -129,8 +131,10 @@ public class PainelInventario extends JPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (!isVisible()) return;
+                Point ponto = Estilo.posicaoNaTela(PainelInventario.this, e.getPoint(),
+                        TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
                 for (int i = 0; i < rectsAbas.length; i++) {
-                    if (rectsAbas[i] != null && rectsAbas[i].contains(e.getPoint())) {
+                    if (rectsAbas[i] != null && rectsAbas[i].contains(ponto)) {
                         abaAtual = Aba.values()[i];
                         selecionado = 0;
                         avisoInline = "";
@@ -140,7 +144,7 @@ public class PainelInventario extends JPanel {
                     }
                 }
                 for (int i = 0; i < rectsLinhas.size(); i++) {
-                    if (rectsLinhas.get(i).contains(e.getPoint())) {
+                    if (rectsLinhas.get(i).contains(ponto)) {
                         selecionado = i;
                         avisoInline = "";
                         atualizarBotoesContexto();
@@ -254,6 +258,11 @@ public class PainelInventario extends JPanel {
     }
 
     @Override
+    public void doLayout() {
+        Estilo.ajustarLayout(this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
@@ -261,6 +270,8 @@ public class PainelInventario extends JPanel {
             // Fundo escurecido sobre a arena
             g2.setColor(new Color(4, 8, 14, 185));
             g2.fillRect(0, 0, getWidth(), getHeight());
+
+            Estilo.escalarTela(g2, this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
 
             int x = 115;
             int y = 74;

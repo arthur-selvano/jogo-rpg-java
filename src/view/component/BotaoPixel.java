@@ -124,9 +124,10 @@ public class BotaoPixel extends JComponent {
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            Dimension tamanho = Estilo.escalarComponente(g2, this);
             AssetManager.preparar(g2);
-            int w = getWidth();
-            int h = getHeight();
+            int w = tamanho.width;
+            int h = tamanho.height;
             boolean ativo = isEnabled();
             boolean destaque = ativo && (hover || hasFocus());
 

@@ -41,6 +41,7 @@ public class PainelCriacao extends JPanel {
         this.jogo = jogo;
 
         setLayout(null);
+        setBackground(Estilo.PRETO);
         setFocusable(true);
 
         campoNome = new JTextField("Heroi");
@@ -114,13 +115,30 @@ public class PainelCriacao extends JPanel {
     }
 
     @Override
+    public void doLayout() {
+        Estilo.ajustarLayout(this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
+        double escala = Estilo.areaTela(this, TelaPrincipal.LARGURA,
+                TelaPrincipal.ALTURA).width / (double) TelaPrincipal.LARGURA;
+        float tamanhoFonte = (float) (20 * escala);
+        if (Float.compare(campoNome.getFont().getSize2D(), tamanhoFonte) != 0) {
+            campoNome.setFont(campoNome.getFont().deriveFont(tamanhoFonte));
+            int margemY = Math.max(1, (int) Math.round(3 * escala));
+            int margemX = Math.max(1, (int) Math.round(10 * escala));
+            campoNome.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(Estilo.OURO, margemY),
+                    BorderFactory.createEmptyBorder(margemY, margemX, margemY, margemX)));
+        }
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            Estilo.escalarTela(g2, this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
             AssetManager.preparar(g2);
-            int w = getWidth();
-            int h = getHeight();
+            int w = TelaPrincipal.LARGURA;
+            int h = TelaPrincipal.ALTURA;
             Estilo.fundoGrama(g2, w, h);
             Estilo.escurecer(g2, w, h, new Color(8, 18, 12, 118));
             Estilo.vinheta(g2, w, h);
@@ -217,9 +235,10 @@ public class PainelCriacao extends JPanel {
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             try {
+                Dimension tamanho = Estilo.escalarComponente(g2, this);
                 AssetManager.preparar(g2);
-                int w = getWidth();
-                int h = getHeight();
+                int w = tamanho.width;
+                int h = tamanho.height;
                 Color fundo = selecionado ? new Color(28, 40, 34) : new Color(18, 26, 40);
                 Estilo.painelZelda(g2, 0, 0, w, h, fundo);
 

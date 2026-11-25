@@ -31,6 +31,7 @@ public class PainelGameOver extends JPanel {
         this.jogo = jogo;
 
         setLayout(null);
+        setBackground(Estilo.PRETO);
         setFocusable(true);
         setPreferredSize(new Dimension(TelaPrincipal.LARGURA, TelaPrincipal.ALTURA));
 
@@ -88,13 +89,19 @@ public class PainelGameOver extends JPanel {
     }
 
     @Override
+    public void doLayout() {
+        Estilo.ajustarLayout(this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            Estilo.escalarTela(g2, this, TelaPrincipal.LARGURA, TelaPrincipal.ALTURA);
             AssetManager.preparar(g2);
-            int w = getWidth();
-            int h = getHeight();
+            int w = TelaPrincipal.LARGURA;
+            int h = TelaPrincipal.ALTURA;
 
             if (vitoria) {
                 desenharVitoria(g2, w, h);

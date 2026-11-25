@@ -1,14 +1,22 @@
 package view.util;
 
+import javax.swing.JComponent;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
 
 /** Cores, fontes e primitivas visuais no estilo 16-bits (Zelda SNES/GBA). */
 public final class Estilo {
+
+    private static final String LIMITES_BASE = "rpg.limitesBase";
 
     public static final Color PRETO = new Color(0x0B0A14);
     public static final Color FUNDO_CAIXA = new Color(18, 30, 54);
@@ -45,6 +53,69 @@ public final class Estilo {
     };
 
     private Estilo() {
+    }
+
+    /** Área centralizada que preserva a proporção da resolução original. */
+    public static Rectangle areaTela(Component painel, int larguraBase, int alturaBase) {
+        double escala = Math.min(Math.max(1, painel.getWidth()) / (double) larguraBase,
+                Math.max(1, painel.getHeight()) / (double) alturaBase);
+        int largura = Math.max(1, (int) Math.round(larguraBase * escala));
+        int altura = Math.max(1, (int) Math.round(alturaBase * escala));
+        return new Rectangle((painel.getWidth() - largura) / 2,
+                (painel.getHeight() - altura) / 2, largura, altura);
+    }
+
+    /** Aplica ao desenho a mesma escala e centralização dos controles. */
+    public static void escalarTela(Graphics2D g2, Component painel,
+                                   int larguraBase, int alturaBase) {
+        Rectangle area = areaTela(painel, larguraBase, alturaBase);
+        g2.translate(area.x, area.y);
+        g2.scale(area.width / (double) larguraBase, area.height / (double) alturaBase);
+        g2.clipRect(0, 0, larguraBase, alturaBase);
+    }
+
+    /** Reposiciona os filhos sempre a partir dos limites originais, sem acumular escala. */
+    public static void ajustarLayout(Container painel, int larguraBase, int alturaBase) {
+        Rectangle area = areaTela(painel, larguraBase, alturaBase);
+        double escalaX = area.width / (double) larguraBase;
+        double escalaY = area.height / (double) alturaBase;
+        for (Component filho : painel.getComponents()) {
+            if (!(filho instanceof JComponent componente)) continue;
+            Rectangle base = (Rectangle) componente.getClientProperty(LIMITES_BASE);
+            if (base == null) {
+                base = componente.getBounds();
+                componente.putClientProperty(LIMITES_BASE, base);
+            }
+            // O inventário sobreposto precisa cobrir também as margens da janela.
+            if (base.x == 0 && base.y == 0
+                    && base.width == larguraBase && base.height == alturaBase) {
+                componente.setBounds(0, 0, painel.getWidth(), painel.getHeight());
+            } else {
+                int x = (int) Math.round(base.x * escalaX);
+                int y = (int) Math.round(base.y * escalaY);
+                int direita = (int) Math.round((base.x + base.width) * escalaX);
+                int baixo = (int) Math.round((base.y + base.height) * escalaY);
+                componente.setBounds(area.x + x, area.y + y, direita - x, baixo - y);
+            }
+        }
+    }
+
+    /** Escala o conteúdo de botões, cartões e HUD junto com seus limites reais. */
+    public static Dimension escalarComponente(Graphics2D g2, JComponent componente) {
+        Rectangle base = (Rectangle) componente.getClientProperty(LIMITES_BASE);
+        Dimension tamanho = base == null ? componente.getSize() : base.getSize();
+        g2.scale(componente.getWidth() / (double) Math.max(1, tamanho.width),
+                componente.getHeight() / (double) Math.max(1, tamanho.height));
+        return tamanho;
+    }
+
+    /** Converte o mouse para as coordenadas usadas pelas áreas clicáveis originais. */
+    public static Point posicaoNaTela(Component painel, Point ponto,
+                                      int larguraBase, int alturaBase) {
+        Rectangle area = areaTela(painel, larguraBase, alturaBase);
+        return new Point(
+                (int) Math.floor((ponto.x - area.x) * larguraBase / (double) area.width),
+                (int) Math.floor((ponto.y - area.y) * alturaBase / (double) area.height));
     }
 
     public static Color misturar(Color a, Color b, double t) {
